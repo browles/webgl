@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title></title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+    }
+
+    .se-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    .se-editor {
+      position: relative;
+      font-family: monospace;
+      display: block;
+      box-sizing: border-box;
+      margin: 2em 0 0 0;
+      padding: 0;
+      color: #fff;
+      overflow-y: scroll;
+      overflow-x: hidden;
+      width: 100%;
+      height: calc(100% - 2em);
+      transition: color 0.1s linear;
+      white-space: pre-wrap;
+      line-height: 1.2em;
+    }
+
+    .se-cursor {
+      position: absolute;
+      top: -10em;
+      left: -10em;
+      height: 1.2em;
+      width: 1px;
+      background: white;
+      z-index: 2;
+    }
+
+    .se-gutter {
+      text-align: center;
+      width: 2em;
+      position: absolute;
+      top: 0;
+      left: 0;
+      color: #bbb;
+      pointer-events: none;
+    }
+
+    .se-text-renderer, .se-code {
+      outline: none;
+      margin-left: 2em;
+      top: 0;
+      left: 0;
+      width: calc(100% - 2em);
+      height: 100%;
+      position: absolute;
+    }
+
+    .se-text-renderer {
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .se-code {
+      color: rgba(0,0,0,0);
+      display: block;
+    }
+
+    .se-saved {
+      color: #5a5;
+    }
+
+    .se-save-load-controllers {
+      position: absolute;
+      top: 0.5em;
+      right: 0.5em;
+      display: flex;
+    }
+
+    .se-save, .se-load {
+      margin-left: 2px;
+      text-align: center;
+      color: #fff;
+      background: #000;
+      border: 1px solid #222;
+      font-size: 14px;
+      border-radius: 5px;
+    }
+
+    .se-error {
+      position: absolute;
+      top: 50%;
+      left: 150%;
+      transform: translate(-50%, -50%);
+      background: #111;
+      color: red;
+      display: none;
+      /*min-height: 40%;*/
+      width: 90%;
+      /*padding: 50px;*/
+      border: 1px solid #000;
+      z-index: 4;
+    }
+
+    .se-gl {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .se-left, .se-right {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      position: relative;
+      height: 100%;
+      width: 50%;
+      border-bottom: 3px solid #222;
+    }
+
+    .se-left {
+      background: #111;
+      float: left;
+      border-right: 3px solid #222;
+    }
+
+    .se-right {
+      background: #000;
+      float: right;
+    }
+
+    .se-title {
+      position: absolute;
+      top: 0;
+      left: 0;
+      color: #ccc;
+      font-family: Arial, sans-serif;
+      padding-top: 0.3em;
+      padding-left: 0.5em;
+    }
+
+    .target {
+      overflow: hidden;
+      position: relative;
+      width: 100vw;
+      height: 50vh;
+    }
+  </style>
+  <script src="/js/lib.js"></script>
+  <script src="/js/editor.js"></script>
+</head>
+<body>
+  <div id="se1" class="target">
+    <div class="se-left"></div>
+    <div class="se-right">
+      <canvas class="se-gl" id="gl-1"></canvas>
+    </div>
+  </div>
+  <div id="se2" class="target">
+    <div class="se-left"></div>
+    <div class="se-right">
+      <canvas class="se-gl" id="gl-2"></canvas>
+    </div>
+  </div>
+  <div id="se3" class="target">
+    <div class="se-left"></div>
+    <div class="se-right">
+      <canvas class="se-gl" id="gl-3"></canvas>
+    </div>
+  </div>
+  <div id="se4" class="target">
+    <div class="se-left"></div>
+    <div class="se-right">
+      <canvas class="se-gl" id="gl-4"></canvas>
+    </div>
+  </div>
+  <script>
+    const se1 = new ShaderEditor(1, document.querySelector('#se1 .se-left'), {
+      canvas: document.getElementById('gl-1'),
+      fragment: `
+        uniform sampler2D image;
+        uniform vec2 resolution;
+      `,
+      uniforms: {image: 0, resolution: [256, 256]}
+    });
+    const se2 = new ShaderEditor(2, document.querySelector('#se2 .se-left'), {
+      canvas: document.getElementById('gl-2'),
+      fragment: `
+        uniform sampler2D image;
+        uniform vec2 resolution;
+      `,
+      uniforms: {image: 0, resolution: [256, 256]}
+    });
+    const se3 = new ShaderEditor(3, document.querySelector('#se3 .se-left'), {
+      canvas: document.getElementById('gl-3'),
+      fragment: `
+        uniform sampler2D image;
+        uniform vec2 resolution;
+      `,
+      uniforms: {image: 0, resolution: [256, 256]}
+    });
+    const se4 = new ShaderEditor(4, document.querySelector('#se4 .se-left'), {
+      canvas: document.getElementById('gl-4'),
+      fragment: `
+        uniform sampler2D image1;
+        uniform sampler2D image2;
+        uniform vec2 resolution;
+      `,
+      uniforms: {image1: 0, image2: 1, resolution: [256, 256]}
+    });
+
+    se1.canvas.width = 256;
+    se1.canvas.height = 256;
+    se2.canvas.width = 256;
+    se2.canvas.height = 256;
+    se3.canvas.width = 256;
+    se3.canvas.height = 256;
+    se4.canvas.width = 256;
+    se4.canvas.height = 256;
+
+    se1.gl.viewport(0, 0, 256, 256);
+    se2.gl.viewport(0, 0, 256, 256);
+    se3.gl.viewport(0, 0, 256, 256);
+    se4.gl.viewport(0, 0, 256, 256);
+
+    createTexture2D(se1.gl, 0);
+    createTexture2D(se2.gl, 0);
+    createTexture2D(se2.gl, 1);
+    createTexture2D(se2.gl, 2);
+    createTexture2D(se3.gl, 0);
+    createTexture2D(se3.gl, 1);
+    createTexture2D(se3.gl, 2);
+    createTexture2D(se4.gl, 0);
+    createTexture2D(se4.gl, 1);
+
+    se1.onCompile = () => {
+      requestAnimationFrame(() => {
+        se1.render();
+
+        textureImage2D(se2.gl, 0, se1.canvas);
+        se2.onCompile(true);
+        textureImage2D(se3.gl, 0, se1.canvas);
+        se3.onCompile(true);
+        se4.onCompile();
+      });
+    }
+
+    se2.onCompile = lazy => {
+      requestAnimationFrame(() => {
+        se2.render();
+        textureImage2D(se4.gl, 0, se2.canvas);
+        if (!lazy) se4.onCompile();
+      });
+    }
+
+    se3.onCompile = lazy => {
+      requestAnimationFrame(() => {
+        se3.render();
+        textureImage2D(se4.gl, 1, se3.canvas);
+        if (!lazy) se4.onCompile();
+      });
+    }
+
+    se4.onCompile = () => requestAnimationFrame(se4.render);
+
+    let image = new Image();
+    image.onload = () => {
+      textureImage2D(se1.gl, 0, image)
+      se1.onCompile();
+    }
+    image.src = 'assets/img.jpg';
+  </script>
+</body>
+</html>

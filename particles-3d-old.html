@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Particles</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      cursor: all-scroll;
+    }
+
+    canvas {
+      background: #aaa;
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.3.1/gl-matrix-min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.5.1/dat.gui.min.js"></script>
+  <script id="glsl-noise" type="text/glsl">
+    //
+    // Description : Array and textureless GLSL 2D/3D/4D simplex
+    //               noise functions.
+    //      Author : Ian McEwan, Ashima Arts.
+    //  Maintainer : ijm
+    //     Lastmod : 20110822 (ijm)
+    //     License : Copyright (C) 2011 Ashima Arts. All rights reserved.
+    //               Distributed under the MIT License. See LICENSE file.
+    //               https://github.com/ashima/webgl-noise
+    //
+
+    vec4 mod289(vec4 x) {
+      return x - floor(x * (1.0 / 289.0)) * 289.0; }
+
+    float mod289(float x) {
+      return x - floor(x * (1.0 / 289.0)) * 289.0; }
+
+    vec4 permute(vec4 x) {
+         return mod289(((x*34.0)+1.0)*x);
+    }
+
+    float permute(float x) {
+         return mod289(((x*34.0)+1.0)*x);
+    }
+
+    vec4 taylorInvSqrt(vec4 r)
+    {
+      return 1.79284291400159 - 0.85373472095314 * r;
+    }
+
+    float taylorInvSqrt(float r)
+    {
+      return 1.79284291400159 - 0.85373472095314 * r;
+    }
+
+    vec4 grad4(float j, vec4 ip)
+      {
+      const vec4 ones = vec4(1.0, 1.0, 1.0, -1.0);
+      vec4 p,s;
+
+      p.xyz = floor( fract (vec3(j) * ip.xyz) * 7.0) * ip.z - 1.0;
+      p.w = 1.5 - dot(abs(p.xyz), ones.xyz);
+      s = vec4(lessThan(p, vec4(0.0)));
+      p.xyz = p.xyz + (s.xyz*2.0 - 1.0) * s.www;
+
+      return p;
+      }
+
+    // (sqrt(5) - 1)/4 = F4, used once below
+    #define F4 0.309016994374947451
+
+    float simplexNoise(vec4 v)
+      {
+      const vec4  C = vec4( 0.138196601125011,  // (5 - sqrt(5))/20  G4
+                            0.276393202250021,  // 2 * G4
+                            0.414589803375032,  // 3 * G4
+                           -0.447213595499958); // -1 + 4 * G4
+
+    // First corner
+      vec4 i  = floor(v + dot(v, vec4(F4)) );
+      vec4 x0 = v -   i + dot(i, C.xxxx);
+
+    // Other corners
+
+    // Rank sorting originally contributed by Bill Licea-Kane, AMD (formerly ATI)
+      vec4 i0;
+      vec3 isX = step( x0.yzw, x0.xxx );
+      vec3 isYZ = step( x0.zww, x0.yyz );
+    //  i0.x = dot( isX, vec3( 1.0 ) );
+      i0.x = isX.x + isX.y + isX.z;
+      i0.yzw = 1.0 - isX;
+    //  i0.y += dot( isYZ.xy, vec2( 1.0 ) );
+      i0.y += isYZ.x + isYZ.y;
+      i0.zw += 1.0 - isYZ.xy;
+      i0.z += isYZ.z;
+      i0.w += 1.0 - isYZ.z;
+
+      // i0 now contains the unique values 0,1,2,3 in each channel
+      vec4 i3 = clamp( i0, 0.0, 1.0 );
+      vec4 i2 = clamp( i0-1.0, 0.0, 1.0 );
+      vec4 i1 = clamp( i0-2.0, 0.0, 1.0 );
+
+      //  x0 = x0 - 0.0 + 0.0 * C.xxxx
+      //  x1 = x0 - i1  + 1.0 * C.xxxx
+      //  x2 = x0 - i2  + 2.0 * C.xxxx
+      //  x3 = x0 - i3  + 3.0 * C.xxxx
+      //  x4 = x0 - 1.0 + 4.0 * C.xxxx
+      vec4 x1 = x0 - i1 + C.xxxx;
+      vec4 x2 = x0 - i2 + C.yyyy;
+      vec4 x3 = x0 - i3 + C.zzzz;
+      vec4 x4 = x0 + C.wwww;
+
+    // Permutations
+      i = mod289(i);
+      float j0 = permute( permute( permute( permute(i.w) + i.z) + i.y) + i.x);
+      vec4 j1 = permute( permute( permute( permute (
+                 i.w + vec4(i1.w, i2.w, i3.w, 1.0 ))
+               + i.z + vec4(i1.z, i2.z, i3.z, 1.0 ))
+               + i.y + vec4(i1.y, i2.y, i3.y, 1.0 ))
+               + i.x + vec4(i1.x, i2.x, i3.x, 1.0 ));
+
+    // Gradients: 7x7x6 points over a cube, mapped onto a 4-cross polytope
+    // 7*7*6 = 294, which is close to the ring size 17*17 = 289.
+      vec4 ip = vec4(1.0/294.0, 1.0/49.0, 1.0/7.0, 0.0) ;
+
+      vec4 p0 = grad4(j0,   ip);
+      vec4 p1 = grad4(j1.x, ip);
+      vec4 p2 = grad4(j1.y, ip);
+      vec4 p3 = grad4(j1.z, ip);
+      vec4 p4 = grad4(j1.w, ip);
+
+    // Normalise gradients
+      vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+      p0 *= norm.x;
+      p1 *= norm.y;
+      p2 *= norm.z;
+      p3 *= norm.w;
+      p4 *= taylorInvSqrt(dot(p4,p4));
+
+    // Mix contributions from the five corners
+      vec3 m0 = max(0.6 - vec3(dot(x0,x0), dot(x1,x1), dot(x2,x2)), 0.0);
+      vec2 m1 = max(0.6 - vec2(dot(x3,x3), dot(x4,x4)            ), 0.0);
+      m0 = m0 * m0;
+      m1 = m1 * m1;
+      return 49.0 * ( dot(m0*m0, vec3( dot( p0, x0 ), dot( p1, x1 ), dot( p2, x2 )))
+                   + dot(m1*m1, vec2( dot( p3, x3 ), dot( p4, x4 ) ) ) ) ;
+
+      }
+
+      // MIT License
+      // Copyright (c) 2014 David Li (http://david.li)
+      // https://github.com/dli/flow/blob/master/flow.js
+      vec4 simplexNoiseDerivatives (vec4 v) {
+        const vec4  C = vec4( 0.138196601125011,0.276393202250021,0.414589803375032,-0.447213595499958);
+
+        vec4 i  = floor(v + dot(v, vec4(F4)) );
+        vec4 x0 = v -   i + dot(i, C.xxxx);
+
+        vec4 i0;
+        vec3 isX = step( x0.yzw, x0.xxx );
+        vec3 isYZ = step( x0.zww, x0.yyz );
+        i0.x = isX.x + isX.y + isX.z;
+        i0.yzw = 1.0 - isX;
+        i0.y += isYZ.x + isYZ.y;
+        i0.zw += 1.0 - isYZ.xy;
+        i0.z += isYZ.z;
+        i0.w += 1.0 - isYZ.z;
+
+        vec4 i3 = clamp( i0, 0.0, 1.0 );
+        vec4 i2 = clamp( i0-1.0, 0.0, 1.0 );
+        vec4 i1 = clamp( i0-2.0, 0.0, 1.0 );
+
+        vec4 x1 = x0 - i1 + C.xxxx;
+        vec4 x2 = x0 - i2 + C.yyyy;
+        vec4 x3 = x0 - i3 + C.zzzz;
+        vec4 x4 = x0 + C.wwww;
+
+        i = mod289(i);
+        float j0 = permute( permute( permute( permute(i.w) + i.z) + i.y) + i.x);
+        vec4 j1 = permute( permute( permute( permute (
+                   i.w + vec4(i1.w, i2.w, i3.w, 1.0 ))
+                 + i.z + vec4(i1.z, i2.z, i3.z, 1.0 ))
+                 + i.y + vec4(i1.y, i2.y, i3.y, 1.0 ))
+                 + i.x + vec4(i1.x, i2.x, i3.x, 1.0 ));
+
+
+        vec4 ip = vec4(1.0/294.0, 1.0/49.0, 1.0/7.0, 0.0) ;
+
+        vec4 p0 = grad4(j0,   ip);
+        vec4 p1 = grad4(j1.x, ip);
+        vec4 p2 = grad4(j1.y, ip);
+        vec4 p3 = grad4(j1.z, ip);
+        vec4 p4 = grad4(j1.w, ip);
+
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+        p0 *= norm.x;
+        p1 *= norm.y;
+        p2 *= norm.z;
+        p3 *= norm.w;
+        p4 *= taylorInvSqrt(dot(p4,p4));
+
+        vec3 values0 = vec3(dot(p0, x0), dot(p1, x1), dot(p2, x2)); //value of contributions from each corner at point
+        vec2 values1 = vec2(dot(p3, x3), dot(p4, x4));
+
+        vec3 m0 = max(0.5 - vec3(dot(x0,x0), dot(x1,x1), dot(x2,x2)), 0.0); //(0.5 - x^2) where x is the distance
+        vec2 m1 = max(0.5 - vec2(dot(x3,x3), dot(x4,x4)), 0.0);
+
+        vec3 temp0 = -6.0 * m0 * m0 * values0;
+        vec2 temp1 = -6.0 * m1 * m1 * values1;
+
+        vec3 mmm0 = m0 * m0 * m0;
+        vec2 mmm1 = m1 * m1 * m1;
+
+        float dx = temp0[0] * x0.x + temp0[1] * x1.x + temp0[2] * x2.x + temp1[0] * x3.x + temp1[1] * x4.x + mmm0[0] * p0.x + mmm0[1] * p1.x + mmm0[2] * p2.x + mmm1[0] * p3.x + mmm1[1] * p4.x;
+        float dy = temp0[0] * x0.y + temp0[1] * x1.y + temp0[2] * x2.y + temp1[0] * x3.y + temp1[1] * x4.y + mmm0[0] * p0.y + mmm0[1] * p1.y + mmm0[2] * p2.y + mmm1[0] * p3.y + mmm1[1] * p4.y;
+        float dz = temp0[0] * x0.z + temp0[1] * x1.z + temp0[2] * x2.z + temp1[0] * x3.z + temp1[1] * x4.z + mmm0[0] * p0.z + mmm0[1] * p1.z + mmm0[2] * p2.z + mmm1[0] * p3.z + mmm1[1] * p4.z;
+        float dw = temp0[0] * x0.w + temp0[1] * x1.w + temp0[2] * x2.w + temp1[0] * x3.w + temp1[1] * x4.w + mmm0[0] * p0.w + mmm0[1] * p1.w + mmm0[2] * p2.w + mmm1[0] * p3.w + mmm1[1] * p4.w;
+
+        return vec4(dx, dy, dz, dw) * 49.0;
+      }
+  </script>
+</head>
+<body>
+  <canvas id="webgl"></canvas>
+  <script>
+    /**
+     * Inspired by "Noise Abstraction" by Akimitsu Hamamuro
+     * http://codepen.io/akm2/details/nImoa/
+     *
+     * and by "Flow" by David Li
+     * http://david.li/flow/
+     */
+    'use strict';
+    var canvas = document.getElementById('webgl');
+    var gl = canvas.getContext('webgl', {
+      preserveDrawingBuffer: false,
+      alpha: false
+    });
+
+    var ext;
+    var TEXTURE_TYPE;
+    var isMobile = navigator.userAgent.match(/iPhone|iPad|Android/);
+    if (isMobile) {
+      ext = gl.getExtension('OES_texture_half_float');
+      TEXTURE_TYPE = ext.HALF_FLOAT_OES;
+    }
+    else {
+      ext = gl.getExtension('OES_texture_float');
+      TEXTURE_TYPE = gl.FLOAT;
+    }
+
+    if (!ext) {
+      document.getElementById('warning').style.display = 'block';
+      throw new Error('Necessary extensions not supported');
+    }
+
+    gl.clearColor(0x33 / 0xff , 0x33 / 0xff, 0x33 / 0xff, 1);
+
+    var MODES = {
+      angle: 0,
+      brownian: 1,
+      curl: 2
+    };
+
+    var resolutionX = 1;
+    var resolutionY = 1;
+
+    var shaders;
+    var noise;
+    var particles;
+    var camera;
+
+    var firstFrame = true;
+
+    var noiseOffset = Math.random() * 1e5;
+    var colorOffset = Math.random() * 1e5;
+
+    var particleConfig = {
+      num: 1 << 18,
+      speed: 10,
+      wind: {
+        x: 2,
+        y: 2,
+        z: 2,
+        'zero()': function() {
+          this.x = this.y = this.z = 0;
+          windFolder.__controllers.forEach(function(c) {c.updateDisplay()});
+        }
+      },
+      source: {
+        x: -45,
+        y: -45,
+        z: -45,
+        sizeX: 20,
+        sizeY: 20,
+        sizeZ: 20,
+        'zero()': function() {
+          this.x = this.y = this.z = 0;
+          sourceFolder.__controllers.forEach(function(c) {c.updateDisplay()});
+        }
+      }
+    };
+
+    var colorConfig = {
+      background: '#333',
+      function: 'noise',
+      scheme: 'cubehelix',
+      speed: 10
+    };
+
+    var fieldConfig = {
+      function: 'curl',
+      headingX: 10,
+      headingY: 10,
+      headingZ: 10,
+      solidAngleRange: 180
+    };
+
+    var noiseConfig = {
+      octaves: 1,
+      frequency: 0.7,
+      falloff: 0.5,
+      speed: 10
+    };
+
+    var glConfig = {
+      pointSize: 1.5,
+      depthTest: true
+    };
+
+    var gui = new dat.GUI();
+    gui.close();
+
+    gui.add({
+      'restart()': reinit
+    }, 'restart()');
+
+    var particlesFolder = gui.addFolder('Particles');
+    particlesFolder.add(particleConfig, 'num');
+    particlesFolder.add(particleConfig, 'speed', 0, 100);
+
+    var windFolder = gui.addFolder('Wind');
+    windFolder.add(particleConfig.wind, 'zero()');
+    windFolder.add(particleConfig.wind, 'x', -50, 50);
+    windFolder.add(particleConfig.wind, 'y', -50, 50);
+    windFolder.add(particleConfig.wind, 'z', -50, 50);
+
+    var sourceFolder = gui.addFolder('Source');
+    sourceFolder.add(particleConfig.source, 'zero()');
+    sourceFolder.add(particleConfig.source, 'x', -100, 100);
+    sourceFolder.add(particleConfig.source, 'y', -100, 100);
+    sourceFolder.add(particleConfig.source, 'z', -100, 100);
+    sourceFolder.add(particleConfig.source, 'sizeX', 1, 100);
+    sourceFolder.add(particleConfig.source, 'sizeY', 1, 100);
+    sourceFolder.add(particleConfig.source, 'sizeZ', 1, 100);
+
+    var colorFolder = gui.addFolder('Color');
+    colorFolder.addColor(colorConfig, 'background').onChange(function(value) {
+      var r = parseInt(value.slice(1, 3), 16);
+      var g = parseInt(value.slice(3, 5), 16);
+      var b = parseInt(value.slice(5, 7), 16);
+      canvas.style.background = value;
+      gl.clearColor(r / 255, g / 255, b / 255, 1);
+    });
+    colorFolder.add(colorConfig, 'function', ['noise']);
+    colorFolder.add(colorConfig, 'speed', 0, 100);
+
+    var fieldFolder = gui.addFolder('Field');
+    fieldFolder.add(fieldConfig, 'function', ['angle', 'brownian', 'curl']).onFinishChange(toggleHeadingControllers);
+    var headingXController = fieldFolder.add(fieldConfig, 'headingX', -100, 100);
+    var headingYController = fieldFolder.add(fieldConfig, 'headingY', -100, 100);
+    var headingZController = fieldFolder.add(fieldConfig, 'headingZ', -100, 100);
+    var solidAngleRangeController = fieldFolder.add(fieldConfig, 'solidAngleRange', 0, 360);
+    function toggleHeadingControllers(value) {
+      if (value === 'angle') {
+        headingXController.domElement.parentNode.parentNode.style.display = 'block';
+        headingYController.domElement.parentNode.parentNode.style.display = 'block';
+        headingZController.domElement.parentNode.parentNode.style.display = 'block';
+        solidAngleRangeController.domElement.parentNode.parentNode.style.display = 'block';
+      }
+      else {
+        headingXController.domElement.parentNode.parentNode.style.display = 'none';
+        headingYController.domElement.parentNode.parentNode.style.display = 'none';
+        headingZController.domElement.parentNode.parentNode.style.display = 'none';
+        solidAngleRangeController.domElement.parentNode.parentNode.style.display = 'none';
+      }
+    }
+    toggleHeadingControllers(fieldConfig.function);
+
+    var noiseFolder = gui.addFolder('Noise');
+    noiseFolder.add(noiseConfig, 'octaves', 1, 5).step(1);
+    noiseFolder.add(noiseConfig, 'frequency', 0.1, 10);
+    noiseFolder.add(noiseConfig, 'falloff', 0, 1);
+    noiseFolder.add(noiseConfig, 'speed', 0, 100);
+
+    var glFolder = gui.addFolder('WebGL');
+    glFolder.add(glConfig, 'pointSize', 1, 10);
+    glFolder.add(glConfig, 'depthTest');
+
+    function createShader(source, type) {
+      var shader;
+      if (type === 'fragment') {
+        shader = gl.createShader(gl.FRAGMENT_SHADER);
+      } else if (type === 'vertex') {
+        shader = gl.createShader(gl.VERTEX_SHADER);
+      } else throw new Error('Invalid shader type');
+
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        alert(gl.getShaderInfoLog(shader));
+        return null;
+      }
+
+      return shader;
+    }
+
+    function createTexture(index) {
+      var texture = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0 + index);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+      return texture;
+    }
+
+    function initShaders() {
+      var noiseFloatPrecision;
+      // mediump is not precise enough for our noise functions on mobile devices, as
+      // far as I can tell, so we enable highp if it is available.
+      if (isMobile) {
+        noiseFloatPrecision = `
+          #ifdef GL_FRAGMENT_PRECISION_HIGH
+          precision highp float;
+          #else
+          precision mediump float;
+          #endif
+        `;
+      }
+      else {
+        noiseFloatPrecision = 'precision mediump float;'
+      }
+
+      var glslHelpers = `
+        ${document.getElementById('glsl-noise').textContent}
+
+        #define PI 3.141592653589793
+        #define TWOPI 6.283185307179586
+        #define FOURPI 12.566370614359172
+
+        const vec3 Z = vec3(0.0, 0.0, 1.0);
+        const vec4 A = vec4(52723.4, -3295.6, 10239.1, -532.0);
+        const vec4 B = vec4(-98736.1, 326.1, -9.0, 432.0);
+
+        float rand(vec2 co) {
+          highp float a = 12.9898;
+          highp float b = 78.233;
+          highp float c = 43758.5453;
+          highp float dt= dot(co.xy ,vec2(a,b));
+          highp float sn= mod(dt,3.14);
+          return fract(sin(sn) * c);
+        }
+
+        vec4 randVec4(vec4 seed) {
+          float r1 = 2.0 * (rand(seed.xy) - 0.5);
+          float r2 = 2.0 * (rand(vec2(seed.z, r1 + 0.131)) - 0.5);
+          float r3 = 2.0 * (rand(vec2(r1 - 0.981, r2)) - 0.5);
+          return vec4(r1, r2, r3, 1.0);
+        }
+      `;
+
+      var positionVertexShaderSource = `
+        precision mediump float;
+
+        attribute vec4 a_position;
+
+        void main(void) {
+          gl_PointSize = 1.0;
+          gl_Position = a_position;
+        }
+      `;
+
+      var positionFragmentShaderSource = `
+        ${noiseFloatPrecision}
+
+        uniform sampler2D u_positionTexture;
+        uniform mat4 u_sourceMatrix;
+        uniform vec2 u_resolution;
+        uniform float u_particleSpeed;
+        uniform vec4 u_particleWind;
+        uniform float u_noiseW;
+        uniform int u_noiseOctaves;
+        uniform float u_noiseFalloff;
+        uniform float u_noiseFrequency;
+        uniform int u_mode;
+        uniform vec3 u_heading;
+        uniform float u_solidAngleRange;
+        uniform bool u_init;
+
+        ${glslHelpers}
+
+        float simplexNoiseSum(vec4 seed, int octaves, float falloff, float frequency) {
+          float result = 0.0;
+          float amp = 1.0;
+          float maxAmp = 0.0;
+          for (int i = 0; i < 5; i++) {
+            if (i < octaves) {
+              result += amp * simplexNoise(seed * frequency);
+              maxAmp += amp;
+              amp *= falloff;
+              frequency *= 2.0;
+            }
+          }
+
+          result /= maxAmp;
+
+          return result;
+        }
+
+        vec4 simplexNoiseDerivativesSum(vec4 seed, int octaves, float falloff, float frequency) {
+          vec4 result = vec4(0.0, 0.0, 0.0, 0.0);
+          float amp = 1.0;
+          float maxAmp = 0.0;
+          for (int i = 0; i < 5; i++) {
+            if (i < octaves) {
+              result += amp * simplexNoiseDerivatives(seed * frequency);
+              maxAmp += amp;
+              amp *= falloff;
+              frequency *= 2.0;
+            }
+          }
+
+          result /= maxAmp;
+
+          return result;
+        }
+
+        void main(void) {
+          vec2 texCoords = gl_FragCoord.xy / u_resolution;
+          vec4 pos = texture2D(u_positionTexture, texCoords);
+          if (u_init) {
+            pos = u_sourceMatrix * randVec4(pos);
+          }
+          else {
+            vec4 delta;
+            vec4 noisePos = vec4(pos.xyz, u_noiseW);
+            if (u_mode == ${MODES.angle}) {
+              float a = simplexNoiseSum(noisePos + B, u_noiseOctaves, u_noiseFalloff, u_noiseFrequency);
+              float b = simplexNoiseSum(noisePos + a * A, u_noiseOctaves, u_noiseFalloff, u_noiseFrequency);
+              a = (a + 1.0) / 2.0;
+              b = (b + 1.0) / 2.0;
+
+              float theta = FOURPI * a;
+              float phi = acos(2.0 * b - 1.0) * u_solidAngleRange / TWOPI;
+
+              float sphi = sin(phi);
+
+              float x = cos(theta) * sphi;
+              float y = sin(theta) * sphi;
+              float z = cos(phi);
+
+              vec3 v = vec3(x, y, z);
+
+              if (TWOPI - u_solidAngleRange > 0.1) {
+                vec3 c = cross(Z, u_heading);
+                float sinRo = length(c);
+                if (sinRo > 0.01) {
+                  float cosRo = dot(Z, u_heading);
+                  float t = 1.0 - cosRo;
+                  float txy = t * c.x * c.y;
+                  float tyz = t * c.y * c.z;
+                  float txz = t * c.x * c.z;
+                  float xs = c.x * sinRo;
+                  float ys = c.y * sinRo;
+                  float zs = c.z * sinRo;
+
+                  mat3 M;
+                  M[0] = vec3(t * c.x * c.x + cosRo, txy + zs, txz - ys);
+                  M[1] = vec3(txy - zs, t * c.y * c.y + cosRo, tyz + xs);
+                  M[2] = vec3(txz + ys, tyz - xs, t * c.z * c.z + cosRo);
+
+                  v = M * v;
+                }
+              }
+
+              delta = vec4(v, 0.0);
+            }
+            else if (u_mode == ${MODES.brownian}) {
+              delta = randVec4(noisePos);
+            }
+            else if (u_mode == ${MODES.curl}) {
+              vec4 dv = simplexNoiseDerivativesSum(noisePos, u_noiseOctaves, u_noiseFalloff, u_noiseFrequency);
+              delta = vec4(dv.y - dv.z, dv.z - dv.x, dv.x - dv.y, 0.0);
+            }
+
+            pos += u_particleWind + u_particleSpeed * delta;
+            pos.w = 0.0;
+            if (pos.x > 1.0 || pos.y > 1.0 || pos.z > 1.0 ||
+              pos.x < -1.0 || pos.y < -1.0 || pos.z < -1.0) {
+              pos = u_sourceMatrix * randVec4(pos);
+            }
+          }
+
+          gl_FragColor = pos;
+        }
+      `;
+
+      var colorVertexShaderSource = `
+        precision mediump float;
+
+        attribute vec4 a_position;
+
+        void main(void) {
+          gl_PointSize = 1.0;
+          gl_Position = a_position;
+        }
+      `;
+
+      var colorFragmentShaderSource = `
+        ${noiseFloatPrecision}
+
+        uniform sampler2D u_positionTexture;
+        uniform sampler2D u_colorTexture;
+        uniform mat4 u_sourceMatrix;
+        uniform float u_noiseW;
+        uniform vec2 u_resolution;
+
+        ${glslHelpers}
+
+        vec4 cubehelix(float start, float lambda, float hue) {
+          float phi = 2.0 * PI * (start / 3.0 + lambda * 4.0);
+          float a = hue * lambda * (1.0 - lambda) / 2.0;
+
+          float cp = cos(phi);
+          float sp = sin(phi);
+
+          float r = lambda + a * (cp * -0.14861 + sp * 1.78277);
+          float g = lambda + a * (cp * -0.29227 + sp * -0.90649);
+          float b = lambda + a * (cp * 1.97294 + sp * 0.0);
+
+          return vec4(r, g, b, 1.0);
+        }
+
+        void main(void) {
+          vec2 texCoords = gl_FragCoord.xy / u_resolution;
+          vec4 position = texture2D(u_positionTexture, texCoords);
+          vec4 color;
+
+          float f = 1000.0;
+
+          if (position.w == 1.0) {
+            color = cubehelix(0.5, 0.35 + 0.5 * simplexNoise(vec4(position.xyz, u_noiseW)), 1.5);
+          }
+          else color = texture2D(u_colorTexture, texCoords);
+
+          gl_FragColor = color;
+        }
+      `;
+
+      var renderVertexShaderSource = `
+        precision mediump float;
+
+        uniform sampler2D u_positionTexture;
+        uniform sampler2D u_colorTexture;
+        uniform mat4 u_projectionMatrix;
+        uniform mat4 u_modelViewMatrix;
+        uniform mat4 u_modelMatrix;
+        uniform mat4 u_viewMatrix;
+        uniform vec2 u_resolution;
+        uniform float u_pointSize;
+        attribute vec2 a_texCoord;
+        varying vec4 v_color;
+
+        void main(void) {
+          vec4 pos = texture2D(u_positionTexture, a_texCoord);
+          vec4 color = texture2D(u_colorTexture, a_texCoord);
+          vec4 worldPos = u_projectionMatrix * u_modelViewMatrix * vec4(pos.xyz, 1.0);
+          gl_PointSize = u_pointSize / worldPos.w;
+          gl_Position = worldPos;
+          v_color = color;
+        }
+      `;
+
+      var renderFragmentShaderSource = `
+        precision mediump float;
+
+        varying vec4 v_color;
+
+        void main(void) {
+          gl_FragColor = v_color;
+        }
+      `;
+
+      var positionVertexShader = createShader(positionVertexShaderSource, 'vertex');
+      var positionFragmentShader = createShader(positionFragmentShaderSource, 'fragment');
+      var colorVertexShader = createShader(colorVertexShaderSource, 'vertex');
+      var colorFragmentShader = createShader(colorFragmentShaderSource, 'fragment');
+      var renderVertexShader = createShader(renderVertexShaderSource, 'vertex');
+      var renderFragmentShader = createShader(renderFragmentShaderSource, 'fragment');
+
+      var positionProgram = gl.createProgram();
+      gl.attachShader(positionProgram, positionVertexShader);
+      gl.attachShader(positionProgram, positionFragmentShader);
+      gl.linkProgram(positionProgram);
+
+      var positionShaders = {
+        program: positionProgram,
+        attributes: {
+          a_position: gl.getAttribLocation(positionProgram, 'a_position')
+        },
+        uniforms: {
+          u_positionTexture: gl.getUniformLocation(positionProgram, 'u_positionTexture'),
+          u_sourceMatrix: gl.getUniformLocation(positionProgram, 'u_sourceMatrix'),
+          u_resolution: gl.getUniformLocation(positionProgram, 'u_resolution'),
+          u_particleSpeed: gl.getUniformLocation(positionProgram, 'u_particleSpeed'),
+          u_particleWind: gl.getUniformLocation(positionProgram, 'u_particleWind'),
+          u_noiseW: gl.getUniformLocation(positionProgram, 'u_noiseW'),
+          u_noiseOctaves: gl.getUniformLocation(positionProgram, 'u_noiseOctaves'),
+          u_noiseFalloff: gl.getUniformLocation(positionProgram, 'u_noiseFalloff'),
+          u_noiseFrequency: gl.getUniformLocation(positionProgram, 'u_noiseFrequency'),
+          u_heading: gl.getUniformLocation(positionProgram, 'u_heading'),
+          u_solidAngleRange: gl.getUniformLocation(positionProgram, 'u_solidAngleRange'),
+          u_mode: gl.getUniformLocation(positionProgram, 'u_mode'),
+          u_init: gl.getUniformLocation(positionProgram, 'u_init')
+        }
+      };
+
+      var colorProgram = gl.createProgram();
+      gl.attachShader(colorProgram, colorVertexShader);
+      gl.attachShader(colorProgram, colorFragmentShader);
+      gl.linkProgram(colorProgram);
+
+      var colorShaders = {
+        program: colorProgram,
+        attributes: {
+          a_position: gl.getAttribLocation(colorProgram, 'a_position')
+        },
+        uniforms: {
+          u_positionTexture: gl.getUniformLocation(colorProgram, 'u_positionTexture'),
+          u_sourceMatrix: gl.getUniformLocation(colorProgram, 'u_sourceMatrix'),
+          u_colorTexture: gl.getUniformLocation(colorProgram, 'u_colorTexture'),
+          u_noiseW: gl.getUniformLocation(colorProgram, 'u_noiseW'),
+          u_resolution: gl.getUniformLocation(colorProgram, 'u_resolution'),
+        }
+      };
+
+      var renderProgram = gl.createProgram();
+      gl.attachShader(renderProgram, renderVertexShader);
+      gl.attachShader(renderProgram, renderFragmentShader);
+      gl.linkProgram(renderProgram);
+
+      var renderShaders = {
+        program: renderProgram,
+        attributes: {
+          a_texCoord: gl.getAttribLocation(renderProgram, 'a_texCoord')
+        },
+        uniforms: {
+          u_positionTexture: gl.getUniformLocation(renderProgram, 'u_positionTexture'),
+          u_colorTexture: gl.getUniformLocation(renderProgram, 'u_colorTexture'),
+          u_pointSize: gl.getUniformLocation(renderProgram, 'u_pointSize'),
+          u_projectionMatrix: gl.getUniformLocation(renderProgram, 'u_projectionMatrix'),
+          u_modelMatrix: gl.getUniformLocation(renderProgram, 'u_modelMatrix'),
+          u_viewMatrix: gl.getUniformLocation(renderProgram, 'u_viewMatrix'),
+          u_modelViewMatrix: gl.getUniformLocation(renderProgram, 'u_modelViewMatrix')
+        }
+      };
+
+      if (!gl.getProgramParameter(positionProgram, gl.LINK_STATUS)) {
+        alert('Could not link position shaders');
+      }
+      if (!gl.getProgramParameter(colorProgram, gl.LINK_STATUS)) {
+        alert('Could not link color shaders');
+      }
+      if (!gl.getProgramParameter(renderProgram, gl.LINK_STATUS)) {
+        alert('Could not link render shaders');
+      }
+
+      shaders = {
+        positionShaders,
+        colorShaders,
+        renderShaders
+      };
+    }
+
+    function initParticles() {
+      var quadBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+
+      var texCoordBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+
+      var positionTexture = null;
+      var colorTexture = null;
+      var positionTextureProxy = null;
+      var colorTextureProxy = null;
+
+      var proxyFrameBuffer = gl.createFramebuffer();
+
+      var modelMatrix = mat4.create();
+      mat4.scale(modelMatrix, modelMatrix, [0.3, 0.3, 0.3]);
+      var modelViewMatrix = mat4.create();
+
+      var sourceMatrix = mat4.create();
+
+      particles = {
+        quadBuffer,
+        texCoordBuffer,
+        positionTexture,
+        colorTexture,
+        positionTextureProxy,
+        colorTextureProxy,
+        proxyFrameBuffer,
+        modelMatrix,
+        modelViewMatrix,
+        sourceMatrix,
+        wind: vec4.create(),
+        heading: vec3.create(),
+        width: 0,
+        height: 0,
+        num: 0
+      };
+
+      reinitParticles();
+    }
+
+
+    function reinitParticles() {
+      var num = particleConfig.num;
+      var n = Math.pow(2, Math.ceil(Math.log2(num)));
+      var sqn = Math.sqrt(n);
+      var textureWidth = Math.pow(2, Math.ceil(Math.log2(sqn)));
+      var textureHeight = Math.pow(2, Math.floor(Math.log2(sqn)));
+
+      var positions = new Float32Array(textureWidth * textureHeight * 4);
+      var colors = new Float32Array(textureWidth * textureHeight * 4);
+      var texCoords = new Float32Array(textureWidth * textureHeight * 2);
+
+      for (var i = 0; i < num; i++) {
+        var j = i * 2;
+        texCoords[j] = (i % textureWidth) / textureWidth;
+        texCoords[j + 1] = (i / textureWidth | 0) / textureWidth;
+        var k = i * 4;
+        positions[k] = 2 * (Math.random() - 0.5);
+        positions[k + 1] = 2 * (Math.random() - 0.5);
+        positions[k + 2] = 2 * (Math.random() - 0.5);;
+      }
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, particles.texCoordBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+
+      for (var i = 0; i < 4; i++) {
+        gl.activeTexture(gl.TEXTURE0 + i);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+      }
+
+      gl.deleteTexture(particles.positionTexture);
+      gl.deleteTexture(particles.colorTexture);
+      gl.deleteTexture(particles.positionTextureProxy);
+      gl.deleteTexture(particles.colorTextureProxy);
+
+      particles.positionTexture = createTexture(0);
+      if (TEXTURE_TYPE === gl.FLOAT) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureWidth, textureHeight, 0, gl.RGBA, TEXTURE_TYPE, positions);
+      }
+      else {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureWidth, textureHeight, 0, gl.RGBA, TEXTURE_TYPE, null);
+        fillTexture2D(particles.positionTexture, textureWidth, textureHeight, positions);
+      }
+      particles.colorTexture = createTexture(1);
+      if (TEXTURE_TYPE === gl.FLOAT) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureWidth, textureHeight, 0, gl.RGBA, TEXTURE_TYPE, colors);
+      }
+      else {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureWidth, textureHeight, 0, gl.RGBA, TEXTURE_TYPE, null);
+        fillTexture2D(particles.colorTexture, textureWidth, textureHeight, positions);
+      }
+      particles.positionTextureProxy = createTexture(2);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureWidth, textureHeight, 0, gl.RGBA, TEXTURE_TYPE, null);
+      particles.colorTextureProxy = createTexture(3);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureWidth, textureHeight, 0, gl.RGBA, TEXTURE_TYPE, null);
+
+      particles.num = num;
+      particles.textureWidth = textureWidth;
+      particles.textureHeight = textureHeight;
+
+      firstFrame = true;
+    }
+
+    // iOS and other mobile devices only support rendering to half float textures, but we are forbidden
+    // from filling a half float texture with texImage2D (presumably because JavaScript lacks Float16Array),
+    // so we have to roll our own.
+    function fillTexture2D(texture, width, height, data) {
+      var num = width * height;
+      var texCoords = new Float32Array(num * 2);
+      for (var i = 0; i < num; i++) {
+        var j = i * 2;
+        texCoords[j] = (i % width) / width;
+        texCoords[j + 1] = (i / height | 0) / height;
+      }
+
+      var fillVertexSource = `
+        precision mediump float;
+
+        attribute vec2 a_texCoord;
+        attribute vec4 a_data;
+        varying vec4 v_color;
+        void main(void) {
+          v_color = a_data;
+          gl_PointSize = 1.0;
+          gl_Position = vec4(a_texCoord, 0.0, 1.0);
+        }
+      `;
+
+      var fillFragmentSource = `
+        precision mediump float;
+
+        varying vec4 v_color;
+        void main(void) {
+          gl_FragColor = v_color;
+        }
+      `;
+
+      var fillVertexShader = createShader(fillVertexSource, 'vertex');
+      var fillFragmentShader = createShader(fillFragmentSource, 'fragment');
+      var fillProgram = gl.createProgram();
+      gl.attachShader(fillProgram, fillVertexShader);
+      gl.attachShader(fillProgram, fillFragmentShader);
+      gl.linkProgram(fillProgram);
+
+      var a_texCoord = gl.getAttribLocation(fillProgram, 'a_texCoord');
+      var a_data = gl.getAttribLocation(fillProgram, 'a_data');
+
+      gl.enableVertexAttribArray(a_texCoord);
+      gl.enableVertexAttribArray(a_data);
+
+      var buffer = gl.createBuffer();
+      var framebuffer = gl.createFramebuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+
+      gl.useProgram(fillProgram);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+      gl.vertexAttribPointer(a_texCoord, 2, gl.FLOAT, false, 0, 0);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      gl.vertexAttribPointer(a_data, 4, gl.FLOAT, false, 0, 0);
+      gl.viewport(0, 0, width, height);
+      gl.drawArrays(gl.POINTS, 0, num);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+      gl.disableVertexAttribArray(a_texCoord);
+      gl.disableVertexAttribArray(a_data);
+    }
+
+    function initCamera() {
+      var position = vec3.fromValues(0, 0, 0.7);
+      var orientation = quat.create();
+      var transform = mat4.create();
+      var viewMatrix = mat4.create();
+      var projectionMatrix = mat4.create();
+
+      quat.rotateY(orientation, orientation, -0.5);
+      quat.rotateZ(orientation, orientation, 0.5);
+      vec3.transformQuat(position, position, orientation);
+
+      camera = {
+        position,
+        orientation,
+        transform,
+        viewMatrix,
+        projectionMatrix
+      };
+
+      updateCameraTransform();
+    }
+
+    function updateCameraTransform() {
+      mat4.fromRotationTranslation(camera.transform, camera.orientation, camera.position)
+      mat4.invert(camera.viewMatrix, camera.transform);
+    }
+
+    function prerender() {
+      var s = particleConfig.source;
+      var w = particleConfig.wind;
+      var h = fieldConfig;
+      mat4.identity(particles.sourceMatrix);
+      mat4.translate(particles.sourceMatrix, particles.sourceMatrix, [s.x / 100, s.y / 100, s.z / 100]);
+      mat4.scale(particles.sourceMatrix, particles.sourceMatrix, [s.sizeX / 100, s.sizeY / 100, s.sizeZ / 100]);
+      vec4.set(particles.wind, w.x / resolutionX, w.y / resolutionY, w.z / resolutionX, 0);
+      vec3.set(particles.heading, h.headingX, h.headingY, h.headingZ);
+      if (vec3.length(particles.heading) === 0) {
+        vec3.set(particles.heading, 0, 0, 1);
+      }
+      else vec3.normalize(particles.heading, particles.heading);
+      mat4.multiply(particles.modelViewMatrix, camera.viewMatrix, particles.modelMatrix);
+
+    }
+
+    function render() {
+      var positionShaders = shaders.positionShaders;
+      var colorShaders = shaders.colorShaders;
+      var renderShaders = shaders.renderShaders;
+      var temp;
+
+      noiseOffset += noiseConfig.speed / 10000;
+      colorOffset += colorConfig.speed / 10000;
+
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      gl.enableVertexAttribArray(positionShaders.attributes.a_position);
+      gl.bindBuffer(gl.ARRAY_BUFFER, particles.quadBuffer);
+      gl.vertexAttribPointer(positionShaders.attributes.a_position, 2, gl.FLOAT, false, 0, 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, particles.proxyFrameBuffer);
+
+      gl.useProgram(positionShaders.program);
+      gl.uniform1i(positionShaders.uniforms.u_positionTexture, 0);
+      gl.uniformMatrix4fv(positionShaders.uniforms.u_sourceMatrix, false, particles.sourceMatrix);
+      gl.uniform2f(positionShaders.uniforms.u_resolution, particles.textureWidth, particles.textureHeight);
+      gl.uniform1f(positionShaders.uniforms.u_particleSpeed, particleConfig.speed / resolutionX);
+      gl.uniform4fv(positionShaders.uniforms.u_particleWind, particles.wind);
+      gl.uniform1f(positionShaders.uniforms.u_noiseW, noiseOffset);
+      gl.uniform1i(positionShaders.uniforms.u_noiseOctaves, noiseConfig.octaves);
+      gl.uniform1f(positionShaders.uniforms.u_noiseFalloff, noiseConfig.falloff);
+      gl.uniform1f(positionShaders.uniforms.u_noiseFrequency, noiseConfig.frequency);
+      gl.uniform3fv(positionShaders.uniforms.u_heading, particles.heading);
+      gl.uniform1f(positionShaders.uniforms.u_solidAngleRange, fieldConfig.solidAngleRange * Math.PI / 180);
+      gl.uniform1i(positionShaders.uniforms.u_mode, MODES[fieldConfig.function]);
+      gl.uniform1i(positionShaders.uniforms.u_init, firstFrame);
+      gl.viewport(0, 0, particles.textureWidth, particles.textureHeight);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, particles.positionTextureProxy, 0);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      temp = particles.positionTextureProxy;
+      particles.positionTextureProxy = particles.positionTexture;
+      particles.positionTexture = temp;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, particles.positionTexture);
+
+      gl.useProgram(colorShaders.program);
+      gl.uniform1i(colorShaders.uniforms.u_positionTexture, 0);
+      gl.uniform1i(colorShaders.uniforms.u_colorTexture, 1);
+      gl.uniformMatrix4fv(colorShaders.uniforms.u_sourceMatrix, false, particles.sourceMatrix);
+      gl.uniform2f(colorShaders.uniforms.u_resolution, particles.textureWidth, particles.textureHeight);
+      gl.uniform1f(colorShaders.uniforms.u_noiseW, colorOffset);
+      gl.viewport(0, 0, particles.textureWidth, particles.textureHeight);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, particles.colorTextureProxy, 0);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      temp = particles.colorTextureProxy;
+      particles.colorTextureProxy = particles.colorTexture;
+      particles.colorTexture = temp;
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, particles.colorTexture);
+
+      gl.disableVertexAttribArray(colorShaders.attributes.a_position);
+
+      if (glConfig.depthTest) {
+        gl.enable(gl.DEPTH_TEST);
+      }
+
+      gl.useProgram(renderShaders.program);
+      gl.enableVertexAttribArray(renderShaders.attributes.a_texCoord);
+      gl.bindBuffer(gl.ARRAY_BUFFER, particles.texCoordBuffer);
+      gl.vertexAttribPointer(renderShaders.attributes.a_texCoord, 2, gl.FLOAT, false, 0, 0);
+      gl.uniform1i(renderShaders.uniforms.u_positionTexture, 0);
+      gl.uniform1i(renderShaders.uniforms.u_colorTexture, 1);
+      gl.uniform1f(renderShaders.uniforms.u_pointSize, glConfig.pointSize);
+      gl.uniformMatrix4fv(renderShaders.uniforms.u_projectionMatrix, false, camera.projectionMatrix);
+      gl.uniformMatrix4fv(renderShaders.uniforms.u_modelMatrix, false, particles.modelMatrix);
+      gl.uniformMatrix4fv(renderShaders.uniforms.u_viewMatrix, false, camera.viewMatrix);
+      gl.uniformMatrix4fv(renderShaders.uniforms.u_modelViewMatrix, false, particles.modelViewMatrix);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, resolutionX, resolutionY);
+      gl.drawArrays(gl.POINTS, 0, particles.num);
+
+      gl.disable(gl.DEPTH_TEST);
+
+      gl.disableVertexAttribArray(renderShaders.attributes.a_texCoord);
+
+      firstFrame = false;
+    }
+
+    function resize() {
+      resolutionX = canvas.width = window.innerWidth;
+      resolutionY = canvas.height = window.innerHeight;
+      mat4.perspective(camera.projectionMatrix, Math.PI / 4, resolutionX / resolutionY, 0.1, 1000);
+      gl.viewport(0, 0, resolutionX, resolutionY);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    }
+
+    function init() {
+      initCamera();
+      initParticles();
+      resize();
+    }
+
+    function reinit() {
+      noiseOffset = Math.random() * 1e5;
+      colorOffset = Math.random() * 1e5;
+      reinitParticles();
+    }
+
+    function loop(time) {
+      requestAnimationFrame(loop);
+      prerender();
+      render();
+    }
+
+    var pointer1 = {x: 0, y: 0};
+    var pointer2 = {x: 0, y: 0};
+    var dragging = false;
+
+    function pointerStart(e) {
+      if (e.target !== canvas) return;
+      if (e.touches) {
+        pointer1.x = e.touches[0].clientX;
+        pointer1.y = e.touches[0].clientY;
+        if (e.touches[1]) {
+          pointer2.x = e.touches[1].clientX;
+          pointer2.y = e.touches[1].clientY;
+        }
+      }
+      else {
+        pointer1.x = e.clientX;
+        pointer1.y = e.clientY;
+      }
+      dragging = true;
+    }
+
+    function pointerMove(e) {
+      if (e.target !== canvas) return;
+      if (!dragging) return;
+      e.preventDefault();
+      var dx = e.clientX - pointer1.x;
+      var dy = e.clientY - pointer1.y;
+      pointer1.x = e.clientX;
+      pointer1.y = e.clientY;
+
+      var v = vec3.fromValues(dy, dx, 0);
+      var l = vec3.length(v);
+      vec3.transformQuat(v, v, camera.orientation);
+      vec3.normalize(v, v);
+
+      var q = quat.create();
+      quat.setAxisAngle(q, v, -l / 100);
+      quat.normalize(q, q);
+
+      quat.multiply(camera.orientation, q, camera.orientation);
+      vec3.transformQuat(camera.position, camera.position, q);
+
+      updateCameraTransform();
+    }
+
+    function pointerEnd(e) {
+      dragging = false;
+    }
+
+    function zoom(e) {
+      if (e.target !== canvas) return;
+      var delta = vec3.fromValues(0, 0, e.deltaY / 100);
+      vec3.transformQuat(delta, delta, camera.orientation);
+      vec3.add(camera.position, camera.position, delta);
+      updateCameraTransform();
+    }
+
+    function touchMove(e) {
+      if (e.target !== canvas) return;
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        var dx = e.touches[0].clientX - pointer1.x;
+        var dy = e.touches[0].clientY - pointer1.y;
+        pointer1.x = e.touches[0].clientX;
+        pointer1.y = e.touches[0].clientY;
+
+        var v = vec3.fromValues(dy, dx, 0);
+        var l = vec3.length(v);
+        vec3.transformQuat(v, v, camera.orientation);
+        vec3.normalize(v, v);
+
+        var q = quat.create();
+        quat.setAxisAngle(q, v, -l / 100);
+        quat.normalize(q, q);
+
+        quat.multiply(camera.orientation, q, camera.orientation);
+        vec3.transformQuat(camera.position, camera.position, q);
+
+        updateCameraTransform();
+      }
+      else if (e.touches.length > 1) {
+        var x1 = pointer1.x;
+        var y1 = pointer1.y;
+        var x2 = pointer2.x;
+        var y2 = pointer2.y;
+
+        pointer1.x = e.touches[0].clientX;
+        pointer1.y = e.touches[0].clientY;
+        pointer2.x = e.touches[1].clientX;
+        pointer2.y = e.touches[1].clientY;
+
+        var d1x = x1 - x2;
+        var d1y = y1 - y2;
+
+        var curr = d1x * d1x + d1y * d1y;
+
+        x1 = e.touches[0].clientX;
+        y1 = e.touches[0].clientY;
+        x2 = e.touches[1].clientX;
+        y2 = e.touches[1].clientY;
+
+        var d2x = x1 - x2;
+        var d2y = y1 - y2;
+
+        var next = d2x * d2x + d2y * d2y;
+
+        var delta = vec3.fromValues(0, 0, -(next - curr) / 1e5);
+        vec3.transformQuat(delta, delta, camera.orientation);
+        vec3.add(camera.position, camera.position, delta);
+        updateCameraTransform();
+      }
+    }
+
+    window.onmousedown = pointerStart;
+    window.onmousemove = pointerMove;
+    window.onmouseup = pointerEnd;
+    window.onwheel = zoom;
+
+    window.ontouchstart = pointerStart;
+    window.ontouchmove = touchMove;
+
+    window.onresize = resize;
+
+    initShaders();
+    init();
+    loop();
+  </script>
+</body>
+</html>

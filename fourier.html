@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title></title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+    }
+
+    .se-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    .se-editor {
+      position: relative;
+      font-family: monospace;
+      display: block;
+      box-sizing: border-box;
+      margin: 2em 0 0 0;
+      padding: 0;
+      color: #fff;
+      overflow-y: scroll;
+      overflow-x: hidden;
+      width: 100%;
+      height: calc(100% - 2em);
+      transition: color 0.1s linear;
+      white-space: pre-wrap;
+      line-height: 1.2em;
+    }
+
+    .se-cursor {
+      position: absolute;
+      top: -10em;
+      left: -10em;
+      height: 1.2em;
+      width: 1px;
+      background: white;
+      z-index: 2;
+    }
+
+    .se-gutter {
+      text-align: center;
+      width: 2em;
+      position: absolute;
+      top: 0;
+      left: 0;
+      color: #bbb;
+      pointer-events: none;
+    }
+
+    .se-text-renderer, .se-code {
+      outline: none;
+      margin-left: 2em;
+      top: 0;
+      left: 0;
+      width: calc(100% - 2em);
+      height: 100%;
+      position: absolute;
+    }
+
+    .se-text-renderer {
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .se-code {
+      color: rgba(0,0,0,0);
+      display: block;
+    }
+
+    .se-saved {
+      color: #5a5;
+    }
+
+    .se-save-load-controllers {
+      position: absolute;
+      top: 0.5em;
+      right: 0.5em;
+      display: flex;
+    }
+
+    .se-save, .se-load {
+      margin-left: 2px;
+      text-align: center;
+      color: #fff;
+      background: #000;
+      border: 1px solid #222;
+      font-size: 14px;
+      border-radius: 5px;
+    }
+
+    .se-error {
+      box-sizing: border-box;
+      position: absolute;
+      top: 100%;
+      left: 0%;
+      transform: translate(0%, -100%);
+      background: #000;
+      color: red;
+      display: none;
+      width: 100%;
+      border: 1px solid #000;
+      z-index: 4;
+    }
+
+    .se-gl {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .se-container, .se-right {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      position: relative;
+      height: 100%;
+      width: 50%;
+      border-bottom: 3px solid #222;
+    }
+
+    .se-container {
+      height: calc(3 * 257px / 4);
+      background: #111;
+      float: left;
+      border-right: 3px solid #222;
+    }
+
+    .se-right {
+      width: 50%;
+      height: 100%;
+      background: #090909;
+      float: right;;
+    }
+
+    .se-title {
+      position: absolute;
+      top: 0;
+      left: 0;
+      color: #ccc;
+      font-family: Arial, sans-serif;
+      padding-top: 0.3em;
+      padding-left: 0.5em;
+    }
+
+    canvas {
+      margin-right: 30px;
+      float: right;
+      transform: scaleY(-1);
+    }
+  </style>
+  <script src="/js/lib.js"></script>
+  <script src="/js/editor.js"></script>
+  <script src="/js/fourier.js"></script>
+</head>
+<body>
+  <div>
+  <div class="se-right">
+    <canvas id="fourier-imaginary"></canvas>
+    <canvas id="fourier-real"></canvas>
+    <canvas id="fourier2"></canvas>
+    <canvas id="fourier1"></canvas>
+    <canvas id="result-imaginary"></canvas>
+    <canvas id="result-real"></canvas>
+  </div>
+  <script>
+    const target = document.body;
+    const realImage = document.getElementById('fourier-real');
+    const imaginaryImage = document.getElementById('fourier-imaginary');
+    const fourier1Canvas = document.getElementById('fourier1');
+    const fourier2Canvas = document.getElementById('fourier2');
+    const resultReal = document.getElementById('result-real');
+    const resultImaginary = document.getElementById('result-imaginary');
+    const realImageCtx = realImage.getContext('2d');
+    const imaginaryImageCtx = imaginaryImage.getContext('2d');
+    const fourier1Ctx = fourier1Canvas.getContext('2d');
+    const fourier2Ctx = fourier2Canvas.getContext('2d');
+    const resultRealCtx = resultReal.getContext('2d');
+    const resultImaginaryCtx = resultImaginary.getContext('2d');
+
+    const fourierCanvas = document.createElement('canvas');
+
+    const gl = fourierCanvas.getContext('webgl');
+    gl.getExtension('OES_texture_float');
+
+    let realEditor = new ShaderEditor('real-part', target, {
+      canvas: fourierCanvas,
+      fragment: `
+        uniform vec2 resolution;
+        uniform sampler2D realImage;
+        uniform sampler2D imaginaryImage;
+      `,
+      uniforms: {resolution: [256, 256], realImage: 0, imaginaryImage: 1}
+    });
+
+    let imaginaryEditor = new ShaderEditor('imaginary-part', target, {
+      canvas: fourierCanvas,
+      fragment: `
+        uniform vec2 resolution;
+        uniform sampler2D realImage;
+        uniform sampler2D imaginaryImage;
+      `,
+      uniforms: {resolution: [256, 256], realImage: 0, imaginaryImage: 1}
+    });
+
+    let fourier1 = new ShaderEditor('fourier1', target, {
+      canvas: fourierCanvas,
+      fragment: `
+        uniform vec2 resolution;
+        uniform sampler2D fourierReal;
+        uniform sampler2D fourierImaginary;
+      `,
+      uniforms: {resolution: [256, 256], fourierReal: 6, fourierImaginary: 7}
+    });
+
+    let fourier2 = new ShaderEditor('fourier2', target, {
+      canvas: fourierCanvas,
+      fragment: `
+        uniform vec2 resolution;
+        uniform sampler2D fourierReal;
+        uniform sampler2D fourierImaginary;
+      `,
+      uniforms: {resolution: [256, 256], fourierReal: 6, fourierImaginary: 7}
+    });
+
+    const preprocessor = new FourierTransformer(gl);
+
+    /*
+      real  -  realColumn -   mag  -  f(mag) - realColumn`  -  real`
+
+              X           X       X          X             X
+
+      imaginary  - ImColumn  - phase - g(phase) - ImColumn`  - imaginary`
+    */
+
+    let realImageTex = createTexture2D(gl, 0);
+    let imaginaryImageTex = createTexture2D(gl, 1);
+
+    let pixelsTex = createTexture2D(gl, 2);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    let pixelsFramebuffer = createFramebuffer(gl, pixelsTex);
+
+    let realColumnsTex = createTexture2D(gl, 4, 256, 256, null, gl.REPEAT);
+    let imaginaryColumnsTex = createTexture2D(gl, 5, 256, 256, null, gl.REPEAT);
+    let realColumnsFramebuffer = createFramebuffer(gl, realColumnsTex);
+    let imaginaryColumnsFramebuffer = createFramebuffer(gl, imaginaryColumnsTex);
+
+    let fourierRealTex = createTexture2D(gl, 6, 256, 256, null, gl.REPEAT);
+    let fourierImaginaryTex = createTexture2D(gl, 7, 256, 256, null, gl.REPEAT);
+    let fourierRealFramebuffer = createFramebuffer(gl, fourierRealTex);
+    let fourierImaginaryFramebuffer = createFramebuffer(gl, fourierImaginaryTex);
+
+    let realTex = createTexture2D(gl, 8, 256, 256, null, gl.REPEAT);
+    let imaginaryTex = createTexture2D(gl, 9, 256, 256, null, gl.REPEAT);
+    let realFramebuffer = createFramebuffer(gl, realTex);
+    let imaginaryFramebuffer = createFramebuffer(gl, imaginaryTex);
+
+    let fourier1Tex = createTexture2D(gl, 10, 256, 256, null, gl.REPEAT);
+    let fourier2Tex = createTexture2D(gl, 11, 256, 256, null, gl.REPEAT);
+    let fourier1Framebuffer = createFramebuffer(gl, fourier1Tex);
+    let fourier2Framebuffer = createFramebuffer(gl, fourier2Tex);
+
+    let dummyRealTex = createTexture2D(gl, 12, 256, 256, null, gl.REPEAT);
+    let dummyImaginaryTex = createTexture2D(gl, 13, 256, 256, null, gl.REPEAT);
+    let dummyRealFramebuffer = createFramebuffer(gl, dummyRealTex);
+    let dummyImaginaryFramebuffer = createFramebuffer(gl, dummyImaginaryTex);
+
+    const DATA = new Uint8Array(256 * 256 * 4);
+    const IMAGEDATA = new ImageData(256, 256);
+
+    function renderToCanvas(gl, ctx) {
+      gl.readPixels(0, 0, 256, 256, gl.RGBA, gl.UNSIGNED_BYTE, DATA);
+      IMAGEDATA.data.set(DATA);
+      ctx.clearRect(0, 0, 256, 256);
+      ctx.putImageData(IMAGEDATA, 0, 0);
+    }
+
+    realEditor.onCompile = lazy => {
+      requestAnimationFrame(() => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, pixelsFramebuffer);
+        realEditor.render();
+        renderToCanvas(gl, realImageCtx);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, realFramebuffer);
+        realEditor.render();
+
+        if (lazy) return;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, realColumnsFramebuffer);
+        preprocessor.realColumns.render({dir: -1, real: 8, imaginary: 9});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, imaginaryColumnsFramebuffer);
+        preprocessor.imaginaryColumns.render({dir: -1, real: 8, imaginary: 9});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fourierRealFramebuffer);
+        preprocessor.real.render({dir: -1, real: 4, imaginary: 5});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fourierImaginaryFramebuffer);
+        preprocessor.imaginary.render({dir: -1, real: 4, imaginary: 5});
+
+        fourier1.onCompile(true);
+        fourier2.onCompile(false);
+      });
+    }
+
+    imaginaryEditor.onCompile = lazy => {
+      requestAnimationFrame(() => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, pixelsFramebuffer);
+        imaginaryEditor.render();
+        renderToCanvas(gl, imaginaryImageCtx);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, imaginaryFramebuffer);
+        imaginaryEditor.render();
+
+        if (lazy) return;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, realColumnsFramebuffer);
+        preprocessor.realColumns.render({dir: -1, real: 8, imaginary: 9});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, imaginaryColumnsFramebuffer);
+        preprocessor.imaginaryColumns.render({dir: -1, real: 8, imaginary: 9});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fourierRealFramebuffer);
+        preprocessor.real.render({dir: -1, real: 4, imaginary: 5});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fourierImaginaryFramebuffer);
+        preprocessor.imaginary.render({dir: -1, real: 4, imaginary: 5});
+
+        fourier1.onCompile(true);
+        fourier2.onCompile(false);
+      });
+    }
+
+    fourier1.onCompile = lazy => {
+      requestAnimationFrame(() => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, pixelsFramebuffer);
+        fourier1.render();
+        renderToCanvas(gl, fourier1Ctx);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fourier1Framebuffer);
+        fourier1.render();
+
+        if (lazy) return;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, realColumnsFramebuffer);
+        preprocessor.realColumns.render({dir: 1, real: 10, imaginary: 11});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, imaginaryColumnsFramebuffer);
+        preprocessor.imaginaryColumns.render({dir: 1, real: 10, imaginary: 11});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, pixelsFramebuffer);
+        preprocessor.real.render({dir: 1, real: 4, imaginary: 5});
+        renderToCanvas(gl, resultRealCtx);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, pixelsFramebuffer);
+        preprocessor.imaginary.render({dir: 1, real: 4, imaginary: 5});
+        renderToCanvas(gl, resultImaginaryCtx);
+      });
+    }
+
+    fourier2.onCompile = lazy => {
+      requestAnimationFrame(() => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, pixelsFramebuffer);
+        fourier2.render();
+        renderToCanvas(gl, fourier2Ctx);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fourier2Framebuffer);
+        fourier2.render();
+
+        if (lazy) return;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, realColumnsFramebuffer);
+        preprocessor.realColumns.render({dir: 1, real: 10, imaginary: 11});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, imaginaryColumnsFramebuffer);
+        preprocessor.imaginaryColumns.render({dir: 1, real: 10, imaginary: 11});
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, pixelsFramebuffer);
+        preprocessor.real.render({dir: 1, real: 4, imaginary: 5});
+        renderToCanvas(gl, resultRealCtx);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, pixelsFramebuffer);
+        preprocessor.imaginary.render({dir: 1, real: 4, imaginary: 5});
+        renderToCanvas(gl, resultImaginaryCtx);
+      });
+    }
+
+    function getImage(src) {
+      return new Promise((resolve, reject) => {
+        let img = new Image();
+        img.onload = () => resolve(img);
+        img.src = src;
+      });
+    }
+
+    Promise.all(['assets/real.jpg', 'assets/imaginary.jpg'].map(getImage))
+      .then(([real, imaginary]) => {
+        if (real.width !== imaginary.width ||
+          real.height !== imaginary.height) {
+          alert('No');
+        }
+
+        let width = real.width;
+        let height = real.height;
+
+        fourierCanvas.width = width;
+        fourierCanvas.height = height;
+        realImage.width = width;
+        realImage.height = height;
+        imaginaryImage.width = width;
+        imaginaryImage.height = height;
+        fourier1Canvas.width = width;
+        fourier1Canvas.height = height;
+        fourier2Canvas.width = width;
+        fourier2Canvas.height = height;
+        resultReal.width = width;
+        resultReal.height = height;
+        resultImaginary.width = width;
+        resultImaginary.height = height;
+
+        textureImage2D(gl, 0, real);
+        textureImage2D(gl, 1, imaginary);
+
+        gl.clearColor(0, 0, 0, 1);
+        gl.viewport(0, 0, 256, 256);
+
+        preprocessor.compile(width, height);
+
+        realEditor.onCompile(true);
+        imaginaryEditor.onCompile(false);
+      });
+
+  </script>
+</body>
+</html>
